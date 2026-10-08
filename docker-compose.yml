@@ -1,48 +1,14 @@
+version: "3.9"
+
 services:
   app:
-    build:
-      context: .
-      target: production
-    environment:
-      NODE_ENV: production
-      PORT: "3000"
-    expose:
-      - "3000"
-    volumes:
-      - type: bind
-        source: ./config.json
-        target: /usr/src/app/config.json
-        read_only: true
-        bind:
-          create_host_path: false
-      - ./outputs:/usr/src/app/outputs
-      - ./tmp:/usr/src/app/tmp
-    init: true
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      start_period: 10s
-      retries: 3
-
-  caddy:
-    image: caddy:2-alpine
-    depends_on:
-      app:
-        condition: service_healthy
-    environment:
-      DOMAIN: ${DOMAIN:?Set DOMAIN in .env before starting production}
+    build: .
+    container_name: node_ffmpeg_dev
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - ./:/usr/src/app
+      - /usr/src/app/node_modules
     restart: unless-stopped
-
-volumes:
-  caddy_data:
-  caddy_config:

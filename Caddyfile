@@ -1,6 +1,0 @@
-{$DOMAIN} {
-	@serviceWorker path /sw.js
-	header @serviceWorker Cache-Control "no-cache"
-
-	reverse_proxy app:3000
-}
