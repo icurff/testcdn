@@ -31,6 +31,63 @@ Then open: [http://localhost:3000](http://localhost:3000)
 
 Upload a video, run the conversion, inspect generated files (playlist, segments, PNGs), and try playback.
 
+## Deploy with Caddy and HTTPS
+
+Production uses `docker-compose.prod.yml` with two services: the Node app on the
+private Docker network and Caddy on public ports 80/443. Caddy automatically
+obtains and renews the certificate for `test.icurff.me`. The production image
+runs Node 22 with `node server.js`; the default Compose file remains the local
+development setup with nodemon.
+
+On the server:
+
+1. Point the DNS A record for `test.icurff.me` to the server's public IPv4 address.
+   If using an AAAA record, it must point to a working IPv6 address on that server.
+2. Allow inbound TCP 80 and 443 in the server/provider firewall. UDP 443 is
+   optional for HTTP/3. Keep outbound HTTPS available for certificate issuance
+   and TikTok requests.
+3. Place your actual `config.json` next to the Compose file and set the domain:
+
+   ```bash
+   cp .env.example .env
+   mkdir -p outputs tmp
+   ```
+
+   Keep existing `outputs/` when migrating videos: it contains playlists and
+   AES keys. `config.json` is mounted read-only and excluded from the image.
+
+4. Build and start production:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --build
+   docker compose -f docker-compose.prod.yml ps
+   docker compose -f docker-compose.prod.yml logs --tail=100 caddy
+   ```
+
+Open **https://test.icurff.me**. Service workers run in the viewer's browser and
+require this secure HTTPS origin. The app's port 3000 is not published in the
+production setup. `outputs/` and `tmp/` remain on the host; Caddy certificates
+persist in the `caddy_data` volume. Keep that volume when updating containers.
+
+To update code, rebuild with the same production command. After changing the
+existing `config.json`, restart the app:
+
+```bash
+docker compose -f docker-compose.prod.yml restart app
+```
+
+For domain or Caddyfile changes, recreate Caddy so it reads the current `.env`:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --force-recreate caddy
+```
+
+The application currently has no login/access checks on upload or key retrieval.
+Add access controls before offering public uploads or private video sharing.
+
+References: [Caddy automatic HTTPS](https://caddyserver.com/docs/automatic-https),
+[official Caddy image storage](https://hub.docker.com/_/caddy).
+
 ## Upload troubleshooting
 
 `tiktok.api_mode` supports `business_center` (the default when omitted) and

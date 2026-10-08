@@ -1,0 +1,13 @@
+.git
+node_modules
+outputs
+tmp
+uploads
+bin
+.docker
+config.json
+.env
+.env.*
+*.log
+BAO_CAO_THAY_DOI.md
+KET_QUA_TEST.md
