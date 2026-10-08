@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <title>Player</title>
     <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
-    <script src="/js/inject.js"></script>
+    <script src="/js/inject.js?v=2"></script>
     <style>
       html,
       body {
@@ -41,7 +41,8 @@
 
     <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
     <script>
-      function showPlayer() {
+      async function showPlayer() {
+        await window.pngSegmentWorkerReady;
         const params = new URLSearchParams(window.location.search);
         const key = params.get("key");
         const url = `/hls/${key}/master.m3u8`;
@@ -57,7 +58,11 @@
         videojs(document.getElementById("videoPlayer"));
       }
 
-      showPlayer();
+      showPlayer().catch((error) => {
+        const result = document.getElementById("result");
+        result.style.cssText = "color:white;padding:24px;font-family:sans-serif";
+        result.textContent = `Player initialization failed: ${error.message}`;
+      });
     </script>
   </body>
 </html>

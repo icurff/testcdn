@@ -121,8 +121,13 @@ app.get("/hls/:jobId/:file", async (req, res) => {
 app.post("/upload", upload.single("video"), async (req, res) => {
   const inputFile = req.file;
   const seg = Math.max(2, Math.min(10, Number(req.body.seg || 4)));
+  const mode = req.body.mode || "copy";
 
   if (!inputFile) return res.status(400).send("No file uploaded");
+  if (!["copy", "transcode"].includes(mode)) {
+    await fsp.unlink(inputFile.path).catch(() => {});
+    return res.status(400).type("text/plain").send("Invalid mode: choose copy or transcode");
+  }
 
   const jobId = uuidv4();
   const jobDir = path.join(OUT_DIR, jobId);
@@ -145,24 +150,22 @@ app.post("/upload", upload.single("video"), async (req, res) => {
     "-y",
     "-i",
     inputFile.path,
-    "-c:v",
-    "libx264",
-    "-preset",
-    "veryfast",
-    "-profile:v",
-    "main",
-    "-crf",
-    "21",
-    "-g",
-    String(seg * 6), // keyframe interval
-    "-sc_threshold",
-    "0",
-    "-c:a",
-    "aac",
-    "-b:a",
-    "128k",
-    "-ac",
-    "2",
+    "-map", "0:v:0",
+    "-map", "0:a:0?",
+    ...(mode === "copy" ? [
+      "-c:v", "copy",
+      "-c:a", "copy",
+    ] : [
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-profile:v", "main",
+      "-crf", "21",
+      "-g", String(seg * 6),
+      "-sc_threshold", "0",
+      "-c:a", "aac",
+      "-b:a", "128k",
+      "-ac", "2",
+    ]),
     "-hls_time",
     String(seg),
     "-hls_playlist_type",
@@ -176,8 +179,10 @@ app.post("/upload", upload.single("video"), async (req, res) => {
     outM3u8,
   ];
 
+  let stage = mode === "copy" ? "FFmpeg stream copy" : "FFmpeg conversion";
   try {
     await spawnFFmpeg(args);
+    stage = "TikTok upload";
     await sendToTiktok(jobDir);
 
     fsp.unlink(inputFile.path).catch(() => {});
@@ -187,16 +192,16 @@ app.post("/upload", upload.single("video"), async (req, res) => {
     res.end(`
         <h3>Completed!</h3>
         <p>Player: <a href="${playlistUrl}" target="_blank">${playlistUrl}</a></p>
-        <iframe src="/player.html?key=${jobId}" />
+        <iframe src="/player.html?key=${jobId}"></iframe>
     `);
   } catch (err) {
-    console.error(err);
+    console.error(`${stage} failed: ${err.message}`);
     fsp.unlink(inputFile.path).catch(() => {});
-    res.status(500).send("FFmpeg error:\n" + err.message);
+    res.status(500).type("text/plain").send(`${stage} failed:\n${err.message}`);
   }
 });
 
-app.listen(PORT, () => {
+export const server = app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
   console.log(`Open http://localhost:${PORT}/ to upload`);
 });

@@ -86,7 +86,6 @@ function insertBeforeIEND(pngBuf, chunks) {
 
 export function extractITXtAll(pngBuf, prefix = "payload-") {
   const PNG_SIG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  const zlib = require("zlib");
 
   if (!pngBuf.slice(0, 8).equals(PNG_SIG)) throw new Error("PNG signature sai");
 
@@ -271,7 +270,7 @@ export function replaceM3u8(dir, data) {
   const content = fs.readFileSync(m3u8, "utf8");
   const newContent = content.replace(
     data.segment,
-    appConfig.tiktok.orgin_link + data.imgURL
+    () => data.url || appConfig.tiktok.orgin_link + data.imgURL
   );
   fs.writeFileSync(m3u8, newContent, "utf8");
 }
@@ -284,10 +283,11 @@ export async function sendToTiktok(dir) {
 
   for (const png of pngs) {
     console.log("sending", png.filePath);
-    const imgURL = await uploadToTiktok(png.filePath);
+    const { webUri, url } = await uploadToTiktok(png.filePath);
     const data = {
       png: png.filePath,
-      imgURL: imgURL,
+      imgURL: webUri,
+      url,
       segment: png.segment,
     };
     outData.push(data);

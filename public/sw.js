@@ -1,8 +1,7 @@
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
 
-  if (url.host === "p16-ad-sg.tiktokcdn.com") {
-    console.log("[SW] Intercept TikTok segment:", url.href);
+  if (url.hostname.endsWith(".tiktokcdn.com")) {
     event.respondWith(handleSegmentSafe(event.request));
   } else {
     return;
@@ -14,29 +13,27 @@ self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 
 async function handleSegmentSafe(req) {
   try {
-    console.log("[SW] handleSegmentSafe");
     return await handleSegment(req);
   } catch (e) {
-    console.error("[SW] handleSegmentSafe error:", e);
-    return fetch(req, { credentials: "omit" });
+    return new Response("PNG segment extraction failed", {
+      status: 502,
+      headers: { "Content-Type": "text/plain", "Cache-Control": "no-store" },
+    });
   }
 }
 
 async function handleSegment(req) {
-  console.log("[SW] handleSegment", req);
   const r = await fetch(req, { credentials: "omit" });
   if (!r.ok) {
-    console.warn("[SW] Fetch failed:", r.status, req.url);
     return r;
   }
 
   const encBuf = new Uint8Array(await r.arrayBuffer());
-  console.log("[SW] Encoded PNG size:", encBuf.length, req.url);
 
   const tsU8 = await extractITXtAll(encBuf, "payload-");
-  console.log("[SW] Extracted TS size:", tsU8.length, req.url);
-
-  console.log("[SW] OK → return TS for", req.url);
+  if (!tsU8.length || tsU8.length % 16 !== 0) {
+    throw new Error("Invalid AES-128 payload length");
+  }
   return new Response(tsU8, {
     status: 200,
     headers: {
@@ -98,26 +95,33 @@ async function extractITXtAll(pngU8, prefix = "payload-") {
     const dataStart = off + 8;
     const dataEnd = dataStart + len;
     const crcEnd = dataEnd + 4;
-    if (crcEnd > pngU8.length) break;
+    if (crcEnd > pngU8.length) throw new Error("Truncated PNG chunk");
 
     if (type === "iTXt") {
       let p = dataStart;
       const end = dataEnd;
 
       const kwEnd = findZero(pngU8, p, end);
+      if (kwEnd < 0 || kwEnd + 3 > end) throw new Error("Invalid iTXt keyword");
       const keyword = readAscii(pngU8, p, kwEnd);
       p = kwEnd + 1;
 
       const compFlag = pngU8[p++];
       const compMethod = pngU8[p++];
+      if (![0, 1].includes(compFlag) || compMethod !== 0) throw new Error("Invalid iTXt compression");
       const langEnd = findZero(pngU8, p, end);
+      if (langEnd < 0) throw new Error("Invalid iTXt language");
       p = langEnd + 1;
       const transEnd = findZero(pngU8, p, end);
+      if (transEnd < 0) throw new Error("Invalid iTXt translation");
       p = transEnd + 1;
       const textData = pngU8.subarray(p, end);
 
       if (keyword.startsWith(prefix)) {
-        const idx = parseInt(keyword.slice(prefix.length), 10);
+        const suffix = keyword.slice(prefix.length);
+        if (!/^\d+$/.test(suffix)) throw new Error("Invalid payload index");
+        const idx = Number(suffix);
+        if (parts.some((part) => part.idx === idx)) throw new Error("Duplicate payload index");
         let utf8Bytes;
         if (compFlag === 1) {
           utf8Bytes = await inflateZlib(textData);

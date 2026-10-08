@@ -30,6 +30,18 @@
         <input type="file" name="video" accept="video/*" required /> </label
       ><br /><br />
       <label
+        >Video processing:
+        <select name="mode">
+          <option value="copy" selected>Giữ nguyên chất lượng — không nén lại</option>
+          <option value="transcode">Nén lại H.264 / AAC (có mất chất lượng)</option>
+        </select></label
+      ><br />
+      <p>
+        Chế độ giữ nguyên không nén lại video hoặc âm thanh. Khả năng phát phụ
+        thuộc codec gốc; H.264 / AAC phù hợp nhất với player hiện tại.
+        Độ dài segment thực tế phụ thuộc các keyframe có sẵn trong video.
+      </p>
+      <label
         >Segment duration (sec):
         <input type="number" name="seg" value="10" min="2" max="10" /></label
       ><br /><br />
@@ -48,9 +60,14 @@
         const data = new FormData(form);
         result.innerHTML = "<p>Processing, please wait...</p>";
 
-        const res = await fetch("/upload", { method: "POST", body: data });
-        const html = await res.text();
-        result.innerHTML = html;
+        try {
+          const res = await fetch("/upload", { method: "POST", body: data });
+          const html = await res.text();
+          if (res.ok) result.innerHTML = html;
+          else result.textContent = html;
+        } catch (error) {
+          result.textContent = `Upload failed: ${error.message}`;
+        }
       });
 
       function showPlayer(url) {
