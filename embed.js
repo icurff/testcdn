@@ -5,7 +5,6 @@ import zlib from "zlib";
 import crypto from "crypto";
 import { basenameNoExt, listFiles } from "./util.js";
 import { uploadToTiktok } from "./uploader.js";
-import appConfig from "./config.js";
 
 function crc32(bytes) {
   let c = ~0 >>> 0;
@@ -28,19 +27,6 @@ function buildChunk(type, data) {
   const crcIn = Buffer.concat([typeBuf, data]);
   const crc = u32be(crc32(crcIn));
   return Buffer.concat([len, typeBuf, data, crc]);
-}
-
-function makeTransparent1x1Png() {
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(1, 0); // w
-  ihdr.writeUInt32BE(1, 4); // h
-  ihdr[8] = 8;
-  ihdr[9] = 6; // 8-bit RGBA
-  const IHDR = buildChunk("IHDR", ihdr);
-  const scanline = Buffer.from([0, 0, 0, 0, 0]); // filter=0 + RGBA(0,0,0,0)
-  const IDAT = buildChunk("IDAT", zlib.deflateSync(scanline));
-  const IEND = buildChunk("IEND", Buffer.alloc(0));
-  return Buffer.concat([PNG_SIG, IHDR, IDAT, IEND]);
 }
 
 function buildITXtChunk(keyword, textUtf8, compress = true) {
@@ -82,70 +68,6 @@ function insertBeforeIEND(pngBuf, chunks) {
   }
   if (iend < 0) throw new Error("Không tìm thấy IEND");
   return Buffer.concat([pngBuf.slice(0, iend), ...chunks, pngBuf.slice(iend)]);
-}
-
-export function extractITXtAll(pngBuf, prefix = "payload-") {
-  const PNG_SIG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-
-  if (!pngBuf.slice(0, 8).equals(PNG_SIG)) throw new Error("PNG signature sai");
-
-  let off = 8;
-  const parts = [];
-
-  while (off + 12 <= pngBuf.length) {
-    const len = pngBuf.readUInt32BE(off);
-    const type = pngBuf.slice(off + 4, off + 8).toString("ascii");
-    const dataStart = off + 8;
-    const dataEnd = dataStart + len;
-    const crcEnd = dataEnd + 4;
-    if (crcEnd > pngBuf.length) throw new Error("PNG hỏng");
-
-    if (type === "iTXt") {
-      // Parse iTXt: keyword\0 compFlag(1B) compMethod(1B) lang\0 translated\0 text
-      let p = dataStart;
-      const end = dataEnd;
-
-      const findZero = (i) => {
-        const j = pngBuf.indexOf(0, i);
-        if (j < 0 || j >= end) throw new Error("iTXt parse error");
-        return j;
-      };
-
-      const kwEnd = findZero(p);
-      const keyword = pngBuf.slice(p, kwEnd).toString("latin1");
-      p = kwEnd + 1;
-
-      const compFlag = pngBuf[p++];
-      const compMethod = pngBuf[p++]; // 0=zlib
-      const langEnd = findZero(p);
-      p = langEnd + 1; // languageTag (skip)
-      const transEnd = findZero(p);
-      p = transEnd + 1; // translatedKeyword (skip)
-      const textData = pngBuf.slice(p, end);
-
-      if (keyword.startsWith(prefix)) {
-        // Get index from suffix, eg "payload-0007" -> 7
-        const idxStr = keyword.slice(prefix.length);
-        const idx = Number.parseInt(idxStr, 10);
-        if (!Number.isFinite(idx)) {
-          throw new Error(`Parse failed: ${keyword}`);
-        }
-        const utf8 = compFlag === 1 ? zlib.inflateSync(textData) : textData;
-        parts.push({ idx, utf8 });
-      }
-    }
-
-    off = crcEnd;
-  }
-
-  if (parts.length === 0) {
-    throw new Error(`Not found iTXt with perfix "${prefix}"`);
-  }
-
-  // sort by idx
-  parts.sort((a, b) => a.idx - b.idx);
-  const b64 = parts.map((p) => p.utf8.toString("utf8")).join("");
-  return Buffer.from(b64, "base64");
 }
 
 function makeIdenticalPng(seed = "default-seed") {
@@ -230,7 +152,7 @@ function makeIdenticalPng(seed = "default-seed") {
   return Buffer.concat([PNG_SIG, IHDR, IDAT, IEND]);
 }
 
-export default function embedPayload(inputPath) {
+function embedPayload(inputPath) {
   const payload = fs.readFileSync(inputPath);
   const b64 = payload.toString("base64");
   const MAX_TEXT = 32 * 1024;
@@ -248,7 +170,7 @@ export default function embedPayload(inputPath) {
   return insertBeforeIEND(base, chunks);
 }
 
-export async function convertTs(dir, name = "_") {
+async function convertTs(dir, name = "_") {
   const files = await listFiles(dir, "ts");
   const pngs = [];
   for (const file of files) {
@@ -265,12 +187,12 @@ export async function convertTs(dir, name = "_") {
   return pngs;
 }
 
-export function replaceM3u8(dir, data) {
+function replaceM3u8(dir, data) {
   const m3u8 = path.join(dir, "master.m3u8");
   const content = fs.readFileSync(m3u8, "utf8");
   const newContent = content.replace(
     data.segment,
-    () => data.url || appConfig.tiktok.orgin_link + data.imgURL
+    () => data.url
   );
   fs.writeFileSync(m3u8, newContent, "utf8");
 }

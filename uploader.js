@@ -4,43 +4,33 @@ import fs from "fs";
 import { basenameNoExt } from "./util.js";
 import appConfig from "./config.js";
 
-function apiMode() {
-  const mode = appConfig.tiktok?.api_mode ?? "business_center";
-  if (!["business_center", "ads_manager"].includes(mode)) {
-    throw new Error("Invalid tiktok.api_mode: use business_center or ads_manager");
-  }
-  const idField = mode === "ads_manager" ? "aadvid" : "org_id";
-  if (typeof appConfig.tiktok[idField] !== "string" || !appConfig.tiktok[idField].trim()) {
-    throw new Error(`Missing tiktok.${idField} (must be a non-empty string)`);
+function validateConfig() {
+  if (typeof appConfig.tiktok?.aadvid !== "string" || !appConfig.tiktok.aadvid.trim()) {
+    throw new Error("Missing tiktok.aadvid (must be a non-empty string)");
   }
   if (typeof appConfig.tiktok.cookie !== "string" || !appConfig.tiktok.cookie.trim()) {
     throw new Error("Missing tiktok.cookie");
   }
-  return mode;
 }
 
-export function apiEndpoint(action) {
+function apiEndpoint(action) {
   if (!["upload", "create"].includes(action)) throw new Error("Invalid TikTok action");
-  const ads = apiMode() === "ads_manager";
-  const url = new URL(ads
-    ? `https://ads.tiktok.com/mi/api/v2/i18n/material/image/${action}/`
-    : `https://business.tiktok.com/api/v3/bm/material/image/${action}/`);
-  url.searchParams.set(ads ? "aadvid" : "org_id", appConfig.tiktok[ads ? "aadvid" : "org_id"]);
-  if (ads) {
-    url.searchParams.set("req_src", "tt4b_creation");
-    if (action === "upload") url.searchParams.set("is_compressed", "0");
-  }
+  validateConfig();
+  const url = new URL(`https://ads.tiktok.com/mi/api/v2/i18n/material/image/${action}/`);
+  url.searchParams.set("aadvid", appConfig.tiktok.aadvid);
+  url.searchParams.set("req_src", "tt4b_creation");
+  if (action === "upload") url.searchParams.set("is_compressed", "0");
   return url.toString();
 }
 
-export function csrfHeaders() {
+function csrfHeaders() {
   const explicit = appConfig.tiktok.csrf_token?.trim();
   const cookieToken = appConfig.tiktok.cookie?.match(/(?:^|;\s*)csrftoken=([^;]*)/)?.[1];
   const token = explicit || cookieToken?.trim();
   return token ? { "x-csrftoken": token } : {};
 }
 
-export function redactSecrets(value) {
+function redactSecrets(value) {
   let text = String(value);
   const cfg = appConfig.tiktok ?? {};
   const secrets = [cfg.cookie, cfg.csrf_token, ...String(cfg.cookie ?? "").split(";").map((part) => {
@@ -51,7 +41,7 @@ export function redactSecrets(value) {
   return text;
 }
 
-export function apiError(stage, response, fallback = "Invalid API response") {
+function apiError(stage, response, fallback = "Invalid API response") {
   const details = [];
   const data = response?.data;
   if (data && typeof data === "object" && !Array.isArray(data)) {
@@ -89,10 +79,9 @@ async function requestTiktok(stage, config) {
 }
 
 function requestHeaders() {
-  const ads = apiMode() === "ads_manager";
-  const origin = ads ? "https://ads.tiktok.com" : "https://business.tiktok.com";
-  const referer = new URL(ads ? "/i18n/creation" : "/manage/material/image", origin);
-  referer.searchParams.set(ads ? "aadvid" : "org_id", appConfig.tiktok[ads ? "aadvid" : "org_id"]);
+  const origin = "https://ads.tiktok.com";
+  const referer = new URL("/i18n/creation", origin);
+  referer.searchParams.set("aadvid", appConfig.tiktok.aadvid);
   return {
     accept: "application/json, text/plain, */*",
     origin,
@@ -133,13 +122,12 @@ export async function uploadToTiktok(filePath) {
   if (typeof webUri !== "string" || !webUri.trim()) {
     throw apiError("TikTok upload", response, "Missing data.image_info.web_uri");
   }
-  const cdnUrl = validateCdnUrl(response.data.data?.url ??
-    (apiMode() === "business_center" ? appConfig.tiktok.orgin_link + webUri : undefined), response);
+  const cdnUrl = validateCdnUrl(response.data.data?.url, response);
   await requestTiktok("TikTok create", {
     method: "post", maxBodyLength: Infinity, url: apiEndpoint("create"),
     headers: { ...requestHeaders(), "content-type": "application/json" },
     data: JSON.stringify({ web_uri: webUri, original_web_uri: webUri,
-      name: basenameNoExt(filePath), show_error: apiMode() === "ads_manager" }),
+      name: basenameNoExt(filePath), show_error: true }),
   });
   return { webUri, url: cdnUrl };
 }

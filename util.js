@@ -1,16 +1,8 @@
 import fs from "fs/promises";
 import path from "path";
 
-export function basenameWithExt(filePath) {
-  return path.basename(filePath);
-}
-
 export function basenameNoExt(filePath) {
   return path.basename(filePath, path.extname(filePath));
-}
-
-export function dirname(filePath) {
-  return path.dirname(filePath);
 }
 
 /**

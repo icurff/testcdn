@@ -1,10 +1,7 @@
 {
     "tiktok": {
-        "api_mode": "business_center",
-        "org_id": "",
         "aadvid": "",
         "cookie": "",
-        "csrf_token": "",
-        "orgin_link": "https://p16-ad-sg.tiktokcdn.com/origin/"
+        "csrf_token": ""
     }
 }

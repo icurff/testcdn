@@ -33,22 +33,19 @@ Upload a video, run the conversion, inspect generated files (playlist, segments,
 
 ## Upload troubleshooting
 
-`tiktok.api_mode` supports `business_center` (the default when omitted) and
-`ads_manager`. Business Center requires a string `org_id`; Ads Manager requires
-a string `aadvid` and the cookie from the corresponding logged-in Ads Manager
-session. Keep real session values in the ignored `config.json` file.
+TikTok uploads use the Ads Manager API. Configure the ad account ID (`aadvid`)
+and cookie from the corresponding logged-in Ads Manager session in the ignored
+`config.json` file. The old Business Center API and `org_id` setting are no
+longer supported.
 
 Example Ads Manager settings:
 
 ```json
 {
   "tiktok": {
-    "api_mode": "ads_manager",
-    "org_id": "",
     "aadvid": "YOUR_AD_ACCOUNT_ID",
     "cookie": "YOUR_ADS_MANAGER_COOKIE",
-    "csrf_token": "",
-    "orgin_link": "https://p16-ad-sg.tiktokcdn.com/origin/"
+    "csrf_token": ""
   }
 }
 ```
@@ -61,14 +58,12 @@ docker compose restart app
 ```
 
 Errors distinguish FFmpeg conversion from TikTok upload, include HTTP/API codes,
-and redact session secrets. Business Center permission does not follow from
-Ads Manager permission. HTML errors mentioning CSRF indicate missing or invalid
+and redact session secrets. HTML errors mentioning CSRF indicate missing or invalid
 tokens. The client does not generate `msToken`, `X-Bogus`, or `X-Gnarly`; an API
 request may still be rejected depending on account/session requirements.
 
-Playlists preserve the exact CDN `data.url`, including its signed query. Ads
-Manager requires that URL; only Business Center falls back to `orgin_link` plus
-the image URI. Signed URLs can expire; automatic renewal/retry is not implemented.
+Playlists preserve the exact CDN `data.url`, including its signed query. Signed
+URLs can expire; automatic renewal/retry is not implemented.
 
 The player waits for `/sw.js?v=2` to control the page before loading HLS. The
 worker extracts encrypted segment bytes from PNGs on `*.tiktokcdn.com`; HLS
